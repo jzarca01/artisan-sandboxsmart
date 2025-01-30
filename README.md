@@ -32,6 +32,7 @@ The main objective of this project is to enable seamless integration between the
 
 - Python 3.7+
 - `bleak` library for BLE communication
+- `websockets` library for managing the communications with Artisan Scope
 - Compatible BLE-enabled coffee roaster
 
 ## Installation
@@ -44,25 +45,32 @@ cd artisan-sandboxsmart
 
 2. Install the required dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 ## Usage
 
-Run the script with either the device name or address:
+### Run the CLI with either the device name or address:
 
 ```bash
 # Using device name
-python sandbox.py --name <device-name>
+artisan-sandbox-cli --name <device-name>
 
 # Using device address
-python sandbox.py --address <device-address>
+artisan-sandbox-cli --address <device-address>
 
 # For macOS users who need to use Bluetooth address instead of UUID
-python sandbox.py --address <device-address> --macos-use-bdaddr
+artisan-sandbox-cli--address <device-address> --macos-use-bdaddr
 ```
 
-### Available Commands
+#### Command Line Arguments
+
+- `--name <name>`: Connect to device by name
+- `--address <address>`: Connect to device by Bluetooth address
+- `--macos-use-bdaddr`: Use Bluetooth address instead of UUID on macOS
+- `-d, --debug`: Enable debug logging
+
+#### Available Commands
 
 Once connected, you can use the following commands through the interactive menu:
 
@@ -77,12 +85,12 @@ Once connected, you can use the following commands through the interactive menu:
 - `HSTART` - Start roasting
 - `EXIT` - Exit the application
 
-## Command Line Arguments
+### Run the websockets server
 
-- `--name <name>`: Connect to device by name
-- `--address <address>`: Connect to device by Bluetooth address
-- `--macos-use-bdaddr`: Use Bluetooth address instead of UUID on macOS
-- `-d, --debug`: Enable debug logging
+```bash
+# Device infos are set directly in the main function
+artisan-sandbox-server
+```
 
 ## Technical Details
 
