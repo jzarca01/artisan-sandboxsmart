@@ -26,6 +26,7 @@ The main objective of this project is to enable seamless integration between the
 - Preheating configuration
 - Cooling cycle management
 - Automated safety shutdown
+- Status handling
 
 ## Requirements
 
@@ -65,9 +66,9 @@ python sandbox.py --address <device-address> --macos-use-bdaddr
 
 Once connected, you can use the following commands through the interactive menu:
 
-- `D0 1200 0-100 220` - Set heat power
-- `R0 1200 0-100 220` - Set drum speed
-- `F0 1200 0-100 220` - Set fan speed
+- `HEAT 0-100` - Set heat power
+- `DRUM 0-100` - Set drum speed
+- `DRAW 0-100` - Set fan speed
 - `LIGHT ON` / `LIGHT OFF` - Control lights
 - `HPTEMP` - Get current temperature
 - `HSTOP` - Stop the roaster
@@ -103,16 +104,18 @@ The controller implements an asynchronous architecture using:
 - [x] Start/Stop roasting commands
 - [x] Light control
 - [x] Cooling cycle command
+- [x] Temperature reading
+- [x] Manual Heat power control
+- [x] Manual Drum speed control
+- [x] Manual Fan speed control
 
 ### Work in Progress
-- [ ] Temperature reading
-- [ ] Heat power control (currently not functional)
-- [ ] Drum speed control (currently not functional)
-- [ ] Fan speed control (currently not functional)
+
+- [ ] Status management
+- [ ] Profile management
 - [ ] Temperature data formatting for Artisan
+- [ ] Websockets server management
 - [ ] Artisan Scope protocol implementation
-- [ ] Configuration interface for Artisan
-- [ ] Full integration testing with Artisan
 
 ## Error Handling
 

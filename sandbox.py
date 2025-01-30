@@ -1,9 +1,10 @@
 import argparse
 import asyncio
+import json
 import logging
 import threading
 from queue import Queue
-from typing import Optional
+from typing import Optional, Set, Dict
 
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -20,12 +21,14 @@ class RoasterController:
         self.client: Optional[BleakClient] = None
         self.command_queue = Queue()
         self.running = True
+        self.latest_temperature: Optional[float] = None
+        self.latest_data: Dict = {}
         
     def print_menu(self) -> str:
         menu = """---MENU---
-        Heat power: D0 1200 0-100 220
-        Drum speed: R0 1200 0-100 220
-        Fan speed: F0 1200 0-100 220
+        Heat power: HEAT 0-100
+        Drum speed: DRUM 0-100
+        Fan speed: DRAW 0-100
         Lights on/off: LIGHT ON / LIGHT OFF
         Get temperature: HPTEMP
         Stop: HSTOP
@@ -36,28 +39,67 @@ class RoasterController:
         """
         print(menu)
         return input("Enter your choice: ")
-
+    
     def has_numbers(self, inputString: str) -> bool:
         return any(char.isdigit() for char in inputString)
 
-    def convert_to_bytearray(self, choice: str) -> bytearray:
-        if self.has_numbers(choice):
-            command = choice.split(" ")
-        else:
-            command = choice
-        result = []
+    def parse_temperature(self, data: bytearray) -> Optional[float]:
+        """Parse la température depuis les données reçues"""
+        try:
+            # Exemple de parsing - à adapter selon le format réel des données
+            hex_temp = data.hex()
+            if hex_temp.startswith('5054'):  # Preheating phase 'PT'
+                temp_bytes = hex_temp[8:12]
+                logger.error(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
+                return int(temp_bytes, 16)
+            elif hex_temp.startswith('4354'):  # Roasting phase 'CT'
+                temp_bytes = hex_temp[8:12]
+                logger.error(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
+                return int(temp_bytes, 16)
+            elif hex_temp.startswith('434c'):  # Cooling phase 'CL'
+                temp_bytes = hex_temp[8:12]
+                logger.error(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
+                return int(temp_bytes, 16)           
+            if hex_temp.startswith('4854'):  # 'HT' en hex
+                temp_bytes = hex_temp[4:8]
+                logger.error(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
+                return int(temp_bytes, 16)
+        except Exception as e:
+            logger.error(f"Error parsing temperature: {e}")
+        return None
+
+    async def send_command(self, parameter: str, *values):
+        """Envoie des commandes au format 'PARAM', 'PARAM VALUE' ou 'PARAM VALUE1 VALUE2' en hexadécimal au client bluetooth"""
+        # Conversion du paramètre en bytes
+        command = parameter.encode('ascii')
         
-        for item in command:
-            if item.isdigit():
-                num = int(item)
-                bytes_value = num.to_bytes(2, byteorder="big")
-                for b in bytes_value:
-                    result.append(b)
+        if values and values[0]:  # Vérifier que values n'est pas vide
+            # Ignorer le dernier élément s'il est un booléen (is_value_two_bytes)
+            actual_values = values[0] if isinstance(values[0], tuple) else (values[0],)
+            
+            # Cas avec une seule valeur entre 0-100
+            if len(actual_values) == 1:
+                try:
+                    if 0 <= int(actual_values[0]) <= 100:
+                        value_int = int(actual_values[0])
+                        command += bytes([value_int])
+
+                except ValueError: # par example value: ON
+                    command += ' '
+                    command += actual_values[0].encode('ascii')
+                
+            # Cas avec plusieurs valeurs ou valeur > 100
             else:
-                for char in item:
-                    result.append(ord(char))
+                for value in actual_values:
+                    value_int = int(value)
+                    command += value_int.to_bytes(2, byteorder='big')
         
-        return bytearray(result)
+        logger.info(f"Command hex: {command.hex()}")
+        await self.client.write_gatt_char(
+            ROASTER_CHARACTERISTIC_UUID,
+            command,
+            response=False
+        )
 
     def menu_thread(self):
         """Thread pour gérer le menu et les entrées utilisateur"""
@@ -69,29 +111,38 @@ class RoasterController:
                     self.command_queue.put(HSTOP)
                     break
                 
-                command = self.convert_to_bytearray(choice)
-                self.command_queue.put(command)
+                self.command_queue.put(choice)
                 
             except Exception as e:
                 logger.error(f"Error in menu thread: {e}")
 
     async def notification_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         """Gestionnaire de notifications BLE"""
-        logger.info(f"Notification: {data} {data.hex(':')}")
+        
+        # Parser et stocker la température si présente
+        temp = self.parse_temperature(data)
+        if temp is not None:
+            logger.info(f"Temperature updated: {temp}")
+            self.latest_temperature = temp
+        else:
+            logger.info(f"Notification: {data} {data.hex(':')}")
+
 
     async def command_processor(self):
         """Traite les commandes de la queue et les envoie au périphérique BLE"""
         while self.running:
             try:
                 if not self.command_queue.empty():
-                    command = self.command_queue.get()
+                    command: str = self.command_queue.get()
+
                     if self.client and self.client.is_connected:
-                        await self.client.write_gatt_char(
-                            ROASTER_CHARACTERISTIC_UUID, 
-                            command, 
-                            response=False
-                        )
-                await asyncio.sleep(0.1)  # Évite de surcharger le CPU
+                        if self.has_numbers(command):
+                            parameter, *values = command.split(" ")
+                            await self.send_command(parameter, *values)
+                        else:
+                            await self.send_command(command)
+
+                await asyncio.sleep(0.1)
             except Exception as e:
                 logger.error(f"Error in command processor: {e}")
 
