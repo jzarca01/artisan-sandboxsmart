@@ -16,31 +16,36 @@ class RoasterController:
         self.client: Optional[BleakClient] = None
         self.command_queue = Queue()
         self.running = True
-        self.latest_temperature: Optional[float] = None
+        self.environment_temperature: Optional[float] = None
+        self.bean_temperature: Optional[float] = None
         self.latest_data: Dict = {}
 
     def has_numbers(self, inputString: str) -> bool:
         return any(char.isdigit() for char in inputString)
 
-    def parse_temperature(self, data: bytearray) -> Optional[float]:
-        """Parse la température depuis les données reçues"""
+    def update_temperatures(self, data: bytearray) -> Optional[float]:
+        """Met a jour les températures depuis les données reçues"""
         try:
             hex_temp = data.hex()
             if hex_temp.startswith('5054'):  # Preheating phase 'PT'
                 temp_bytes = hex_temp[8:12]
-                logger.error(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
+                self.environment_temperature = int(temp_bytes, 16)
+                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
                 return int(temp_bytes, 16)
             elif hex_temp.startswith('4354'):  # Roasting phase 'CT'
                 temp_bytes = hex_temp[8:12]
-                logger.error(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
+                self.bean_temperature = int(temp_bytes, 16)
+                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
                 return int(temp_bytes, 16)
             elif hex_temp.startswith('434c'):  # Cooling phase 'CL'
                 temp_bytes = hex_temp[8:12]
-                logger.error(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
+                self.environment_temperature = int(temp_bytes, 16)
+                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
                 return int(temp_bytes, 16)           
             if hex_temp.startswith('4854'):  # 'HT' en hex
                 temp_bytes = hex_temp[4:8]
-                logger.error(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
+                self.environment_temperature = int(temp_bytes, 16)
+                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
                 return int(temp_bytes, 16)
         except Exception as e:
             logger.error(f"Error parsing temperature: {e}")
@@ -51,8 +56,8 @@ class RoasterController:
         command = parameter.encode('ascii')
         
         if values and values[0]:
-            actual_values = values[0] if isinstance(values[0], tuple) else (values[0],)
-            
+            actual_values = values[0] if isinstance(values[0], tuple) else values
+
             if len(actual_values) == 1:
                 try:
                     if 0 <= int(actual_values[0]) <= 100:
@@ -75,11 +80,14 @@ class RoasterController:
 
     async def notification_handler(self, characteristic: BleakGATTCharacteristic, data: bytearray):
         """Gestionnaire de notifications BLE"""
-        temp = self.parse_temperature(data)
+        temp = self.update_temperatures(data)
         if temp is not None:
-            logger.info(f"Temperature updated: {temp}")
-            self.latest_temperature = temp
+            logger.info(f"Temperatures updated: ET: {self.environment_temperature} BT: {self.bean_temperature}")
         else:
+            try:
+                self.latest_data = data.decode("utf-8");
+            except Exception as e:
+                self.latest_data = data;
             logger.info(f"Notification: {data} {data.hex(':')}")
 
     async def process_command(self, command: str):
@@ -107,6 +115,10 @@ class RoasterController:
         if command.upper() == "EXIT":
             self.running = False
             self.command_queue.put(HSTOP)
+        if command.upper() == "COOLING":
+            self.bean_temperature = None
+        elif "HPSTART" in command.upper():
+            self.bean_temperature = None
         else:
             self.command_queue.put(command)
 

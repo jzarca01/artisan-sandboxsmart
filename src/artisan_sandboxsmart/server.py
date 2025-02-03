@@ -2,10 +2,8 @@ import asyncio
 import json
 import logging
 import websockets
-from websockets.server import WebSocketServerProtocol
-from typing import Set
 from bleak import BleakScanner
-from src.artisan_sandboxsmart.controller import RoasterController
+from controller import RoasterController
 
 logger = logging.getLogger(__name__)
 
@@ -13,118 +11,159 @@ class RoasterWebSocketServer:
     def __init__(self, host: str = "localhost", port: int = 8765):
         self.host = host
         self.port = port
-        self.controller: RoasterController = None
-        self.clients: Set[WebSocketServerProtocol] = set()
+        self.controller = None
+        self.clients = set()
         self.current_status = {
-            "connected": False,
-            "temperature": None,
-            "last_command": None
+            "data": {
+                "ET": None,
+                "BT": None,
+                "status": ""
+            },
+            "last_command": "Hello",
+            "id": 0,
         }
-        self.update_task = None
+        self.running = False
+        self._notification_queue = asyncio.Queue()
+        self._websocket_message_queue = asyncio.Queue()  # Nouvelle queue pour les messages WebSocket
 
-    async def register(self, websocket: WebSocketServerProtocol):
-        """Enregistre un nouveau client websocket"""
+    def convert_data_for_json(self, data):
+        """Convertit les données en format JSON-sérialisable"""
+        if isinstance(data, bytearray):
+            return list(data)  # Convertit bytearray en liste
+        elif isinstance(data, bytes):
+            return list(data)  # Convertit bytes en liste
+        elif isinstance(data, dict):
+            return {k: self.convert_data_for_json(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self.convert_data_for_json(item) for item in data]
+        return data
+
+    async def handle_ble_notification(self, sender, data):
+        """Met les notifications BLE dans une queue au lieu de les traiter directement"""
+        await self._notification_queue.put((sender, data))
+
+    async def process_notifications(self):
+        """Traite les notifications BLE depuis la queue"""
+        while self.running:
+            try:
+                sender, data = await self._notification_queue.get()
+                converted_data = self.convert_data_for_json(data)
+                # Traiter la notification ici
+                # Mettre à jour current_status si nécessaire
+                self.current_status["data"]["status"] = converted_data                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Erreur lors du traitement de la notification: {e}")
+
+    async def process_websocket_messages(self):
+        """Traite les messages WebSocket depuis la queue"""
+        while self.running:
+            try:
+                ws_client, message = await self._websocket_message_queue.get()
+                try:
+                    json_message = json.loads(message)
+                    logger.info(f"Nouveau message reçu: {json_message}")
+                    await ws_client.send(json.dumps({"success": True}))
+
+                    environment_temp = self.convert_data_for_json(self.controller.environment_temperature)
+                    bean_temp = self.convert_data_for_json(self.controller.bean_temperature)
+                    
+                    self.current_status["data"].update({
+                        "ET": environment_temp,
+                        "BT": bean_temp,
+                    })
+
+                    response = self.current_status
+
+                    if "id" in json_message:
+                        response["id"] = json_message["id"]
+                    if "command" in json_message:
+                        response["last_command"] = json_message["command"]
+                        await ws_client.send(json.dumps(response))
+                    if "pushMessage" in json_message:
+                        if self.controller:
+                            response["last_command"] = json_message["pushMessage"]
+                            self.controller.add_command(json_message["pushMessage"])
+                            await ws_client.send(json.dumps({"success": True}))
+                    logger.info(f"Reponse: {response}")
+                except json.JSONDecodeError:
+                    await ws_client.send(json.dumps({"error": "Invalid JSON"}))
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Erreur lors du traitement du message WebSocket: {e}")
+
+    async def register(self, websocket):
         self.clients.add(websocket)
-        # Envoie l'état actuel au nouveau client
-        await websocket.send(json.dumps(self.current_status))
+        logger.info(f"Client connecté. Nombre de clients: {len(self.clients)}")
 
-    async def unregister(self, websocket: WebSocketServerProtocol):
-        """Désinscrit un client websocket"""
+    async def unregister(self, websocket):
         self.clients.remove(websocket)
+        logger.info(f"Client déconnecté. Nombre de clients: {len(self.clients)}")
 
-    async def broadcast_status(self):
-        """Envoie l'état actuel à tous les clients connectés"""
-        if not self.clients:
-            return
-
-        # Met à jour le statut avec les dernières informations du contrôleur
-        if self.controller:
-            self.current_status.update({
-                "connected": self.controller.client and self.controller.client.is_connected,
-                "temperature": self.controller.latest_temperature
-            })
-
-        message = json.dumps(self.current_status)
-        websockets_tasks = [client.send(message) for client in self.clients]
-        await asyncio.gather(*websockets_tasks)
-
-    async def status_updater(self):
-        """Tâche périodique pour mettre à jour le statut"""
-        while True:
-            await self.broadcast_status()
-            await asyncio.sleep(1)  # Met à jour toutes les secondes
-
-    async def handle_command(self, command: str):
-        """Traite une commande reçue via websocket"""
-        if not self.controller:
-            logger.error("No controller available")
-            return {"error": "No controller available"}
-
-        try:
-            self.current_status["last_command"] = command
-            self.controller.add_command(command)
-            return {"success": True, "message": f"Command {command} sent"}
-        except Exception as e:
-            logger.error(f"Error processing command: {e}")
-            return {"error": str(e)}
-
-    async def handle_client(self, websocket: WebSocketServerProtocol):
-        """Gère la connexion d'un client websocket"""
+    async def handle_client(self, websocket):
         await self.register(websocket)
         try:
             async for message in websocket:
-                try:
-                    # Parse le message JSON reçu
-                    data = json.loads(message)
-                    if "command" in data:
-                        response = await self.handle_command(data["command"])
-                        await websocket.send(json.dumps(response))
-                except json.JSONDecodeError:
-                    await websocket.send(json.dumps({"error": "Invalid JSON format"}))
+                await self._websocket_message_queue.put((websocket, message))  # Ajouter le message à la queue
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
             await self.unregister(websocket)
 
     async def start_server(self, device_name: str = None, device_address: str = None):
-        """Démarre le serveur websocket et initialise le contrôleur"""
-        # Recherche et connexion au dispositif BLE
+        # Connexion BLE
         device = None
         if device_address:
-            device = await BleakScanner.find_device_by_address(device_address)
+            device = await BleakScanner.find_device_by_address(
+                device_address,
+                cb=dict(use_bdaddr=True))
         elif device_name:
             device = await BleakScanner.find_device_by_name(device_name)
 
         if not device:
-            logger.error("Could not find BLE device")
+            logger.error("Dispositif BLE non trouvé")
             return
 
-        # Initialise et connecte le contrôleur
+        # Initialize controller avec le callback modifié
         self.controller = RoasterController()
-        connected = await self.controller.connect(device)
-        
-        if not connected:
-            logger.error("Failed to connect to BLE device")
+        self.controller.notification_callback = self.handle_ble_notification
+                
+        if not await self.controller.connect(device):
+            logger.error("Échec de connexion au dispositif BLE")
             return
 
-        # Démarre le processeur de commandes du contrôleur
-        controller_task = asyncio.create_task(self.controller.start())
-        
-        # Démarre la tâche de mise à jour du statut
-        self.update_task = asyncio.create_task(self.status_updater())
+        self.running = True
 
-        # Démarre le serveur websocket
+        # Démarrer les tâches
+        tasks = [
+            asyncio.create_task(self.process_notifications()),
+            asyncio.create_task(self.process_websocket_messages()),  # Ajouter la tâche de traitement des messages WebSocket
+            asyncio.create_task(self.controller.start()),
+        ]
+
+        # Démarrer le serveur websocket
         async with websockets.serve(self.handle_client, self.host, self.port):
-            logger.info(f"WebSocket server started on ws://{self.host}:{self.port}")
-            await asyncio.Future()  # Run forever
+            logger.info(f"Serveur WebSocket démarré sur ws://{self.host}:{self.port}")
+            try:
+                await asyncio.Future()  # run forever
+            finally:
+                self.running = False
+                for task in tasks:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
 
 async def main():
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    
-    # Paramètres du dispositif BLE (à adapter selon vos besoins)
-    # DEVICE_NAME = "YourDeviceName"  # ou utiliser l'adresse
-    SANDBOX_MAC_ADDRESS = "cf:03:01:00:06:8c"
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
 
+    SANDBOX_MAC_ADDRESS = "cf:03:01:00:06:8c"
     server = RoasterWebSocketServer()
     await server.start_server(device_address=SANDBOX_MAC_ADDRESS)
 

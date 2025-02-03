@@ -13,7 +13,7 @@ The main objective of this project is to enable seamless integration between the
 - Record and reproduce roasting profiles
 - Leverage all of Artisan's advanced roasting features
 
-**Current Status**: The basic BLE communication and control features are implemented, but the Artisan Scope integration is still under development.
+**Current Status**: Manual roasting using Artisan Scope works, profile and status management upcoming.
 
 ## Features
 
@@ -33,7 +33,7 @@ The main objective of this project is to enable seamless integration between the
 - Python 3.7+
 - `bleak` library for BLE communication
 - `websockets` library for managing the communications with Artisan Scope
-- Compatible BLE-enabled coffee roaster
+- Sandbox Smart home coffee roaster (tested with R1 but it should work with R2 as well)
 
 ## Installation
 
@@ -54,13 +54,13 @@ pip install -e ".[dev]"
 
 ```bash
 # Using device name
-artisan-sandbox-cli --name <device-name>
+python3 cli.py --name <device-name>
 
 # Using device address
-artisan-sandbox-cli --address <device-address>
+python3 cli.py --address <device-address>
 
-# For macOS users who need to use Bluetooth address instead of UUID
-artisan-sandbox-cli--address <device-address> --macos-use-bdaddr
+# For macOS users
+python3 cli.py --address <device-address> --macos-use-bdaddr
 ```
 
 #### Command Line Arguments
@@ -89,8 +89,54 @@ Once connected, you can use the following commands through the interactive menu:
 
 ```bash
 # Device infos are set directly in the main function
-artisan-sandbox-server
+python3 server.py
 ```
+
+### Run the websockets client (optional)
+
+```bash
+python3 cli_ws.py --url ws://localhost:8765
+```
+
+## Integration with Artisan Scope
+
+### Configuration
+
+- Config > Device
+
+![Config > Device](./images/config_device.png)
+
+- Config > Port > Websocket
+
+![Config > Port > Websocket](./images/config_port_websocket.png)
+
+- Config > Sampling
+
+![Config > Sampling](./images/config_sampling.png)
+
+- Config > Events > Config
+
+![Config > Events > Config ](./images/config_events.png)
+
+Here you can change preheating parameters with the following syntax `HPSTART 1200 200` - Start preheating (time (in seconds no need to change)  / temperature) 
+
+- Config > Events > Sliders
+
+![Config > Events > Sliders ](./images/config_events_sliders.png)
+
+⚠️ **Beware of the double brackets** ⚠️
+
+- Make sure Config > Temperature is set to `Celsius Mode`
+
+### Start roasting
+
+- Start the websocket server
+- Press the `ON` button in Artisan, Websocket should connected
+- Start preheating by pressing the `START` button
+- When preheating is finished, start roasting by pressing the `CHARGE` button
+- You can set the `Air` (Fan), `Burner` (Heat) and `Drum` settings value directly from the interface
+- The `DROP` button stops the roasting
+- The `COOL END` button starts the cooling
 
 ## Technical Details
 
@@ -116,14 +162,13 @@ The controller implements an asynchronous architecture using:
 - [x] Manual Heat power control
 - [x] Manual Drum speed control
 - [x] Manual Fan speed control
+- [x] Websockets server management
+- [x] Temperature data formatting for Artisan
 
 ### Work in Progress
 
 - [ ] Status management
 - [ ] Profile management
-- [ ] Temperature data formatting for Artisan
-- [ ] Websockets server management
-- [ ] Artisan Scope protocol implementation
 
 ## Error Handling
 
