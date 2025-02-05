@@ -54,6 +54,9 @@ class RoasterController:
     async def send_command(self, parameter: str, *values):
         """Envoie des commandes au format 'PARAM', 'PARAM VALUE' ou 'PARAM VALUE1 VALUE2' en hexadécimal au client bluetooth"""
         command = parameter.encode('ascii')
+
+        logger.info(f"send_command: {command}: {values}")
+
         
         if values and values[0]:
             actual_values = values[0] if isinstance(values[0], tuple) else values
@@ -115,12 +118,14 @@ class RoasterController:
         if command.upper() == "EXIT":
             self.running = False
             self.command_queue.put(HSTOP)
-        if command.upper() == "COOLING":
-            self.bean_temperature = None
-        elif "HPSTART" in command.upper():
-            self.bean_temperature = None
         else:
+            if command.upper() == "COOLING":
+                self.bean_temperature = None
+            if "HPSTART" in command.upper():
+                self.bean_temperature = None
             self.command_queue.put(command)
+
+
 
     async def connect(self, device):
         """Établit la connexion avec le périphérique BLE"""
