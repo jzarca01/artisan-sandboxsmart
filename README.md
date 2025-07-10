@@ -4,6 +4,9 @@
 
 A Python-based Bluetooth Low Energy (BLE) controller for managing and monitoring a [Sandbox Smart](https://www.sandboxsmart.com) coffee roaster. This project aims to create a bridge the device and [Artisan Scope](https://artisan-scope.org/), the popular open-source coffee roasting software.
 
+## Current Status: 
+Manual roasting using Artisan Scope works, profile and status management upcoming.
+
 ## Project Goal
 
 The main objective of this project is to enable seamless integration between the device and Artisan Scope. While the current implementation provides direct control through a command-line interface, the end goal is to create a compatible driver that will allow Artisan Scope to:
@@ -50,53 +53,17 @@ pip install -e ".[dev]"
 
 ## Usage
 
-### Run the CLI with either the device name or address:
-
-```bash
-# Using device name
-python3 cli.py --name <device-name>
-
-# Using device address
-python3 cli.py --address <device-address>
-
-# For macOS users
-python3 cli.py --address <device-address> --macos-use-bdaddr
-```
-
-#### Command Line Arguments
-
-- `--name <name>`: Connect to device by name
-- `--address <address>`: Connect to device by Bluetooth address
-- `--macos-use-bdaddr`: Use Bluetooth address instead of UUID on macOS
-- `-d, --debug`: Enable debug logging
-
-#### Available Commands
-
-Once connected, you can use the following commands through the interactive menu:
-
-- `HEAT 0-100` - Set heat power
-- `DRUM 0-100` - Set drum speed
-- `DRAW 0-100` - Set fan speed
-- `LIGHT ON` / `LIGHT OFF` - Control lights
-- `HPTEMP` - Get current temperature
-- `HSTOP` - Stop the roaster
-- `COOLING` - Activate cooling cycle
-- `HPSTART 1200 200` - Start preheating (time / temperature)
-- `HSTART` - Start roasting
-- `EXIT` - Exit the application
-
 ### Run the websockets server
 
 ```bash
 # Device infos are set directly in the main function
-python3 server.py
+python3 server.py --mac cf:03:01:00:00:00
 ```
 
-### Run the websockets client (optional)
+You can find the MAC Address of your roaster in the Sandbox Smart app
 
-```bash
-python3 cli_ws.py --url ws://localhost:8765
-```
+![Sandbox Smart App](./images/sandboxsmart.jpeg)
+
 
 ## Integration with Artisan Scope
 
@@ -135,8 +102,18 @@ Here you can change preheating parameters with the following syntax `HPSTART 120
 - Start preheating by pressing the `START` button
 - When preheating is finished, start roasting by pressing the `CHARGE` button
 - You can set the `Air` (Fan), `Burner` (Heat) and `Drum` settings value directly from the interface
+
+![Sliders ](./images/sliders.png)
+
+- If sliders are not visible, toggle "Sliders" in the "View" menu
+
+![View > Sliders ](./images/menu.png)
+
 - The `DROP` button stops the roasting
 - The `COOL END` button starts the cooling
+
+![Buttons ](./images/buttons.png)
+
 
 ## Technical Details
 
@@ -187,4 +164,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Disclaimer
 
-This software is provided as-is. Please ensure you understand the implications of controlling heating equipment remotely before using this controller.
+This program is provided as-is. Please ensure you understand the implications of controlling heating equipment remotely before using this controller. **I will not be held responsible for direct, indirect, incidental, or consequential damages arising from the use or inability to use this program.**
+
+By using this program, you expressly acknowledge and accept that its use is entirely at your own risk. You assume full responsibility for any damage, data loss, malfunctions, service interruptions, or any other harm that may result from using this software, including but not limited to: fire damage, electrical damage, injuries, burnt coffee, file corruption, loss of productivity, hardware or software damage, or financial consequences, loss of warranty, loss of access to Sandbox Smart account and/or subscription. The author of this program disclaims all liability whatsoever and cannot under any circumstances be held responsible for direct, indirect, incidental, or consequential damages arising from the use or inability to use this program. This disclaimer applies even if the author has been advised of the possibility of such damages. If you do not accept these terms, immediately cease using this program.

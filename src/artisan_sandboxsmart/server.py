@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import websockets
+import argparse  # Ajout de l'import
 from bleak import BleakScanner
 from controller import RoasterController
 
@@ -158,14 +159,20 @@ class RoasterWebSocketServer:
                         pass
 
 async def main():
+    # Configuration des arguments de ligne de commande
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mac', '-m', 
+                        required=True,
+                        help='Adresse MAC du dispositif BLE (ex: cf:03:01:00:00:00)')
+
+    args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
 
-    SANDBOX_MAC_ADDRESS = "cf:03:01:00:06:8c"
     server = RoasterWebSocketServer()
-    await server.start_server(device_address=SANDBOX_MAC_ADDRESS)
+    await server.start_server(device_address=args.mac)
 
 if __name__ == "__main__":
     asyncio.run(main())
