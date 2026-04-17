@@ -12,6 +12,6 @@ from artisan_sandboxsmart.server import RoasterWebSocketServer
 __all__ = [
     "RoasterController",
     "RoasterCLI",
-    "RoasterCLIWs"
+    "RoasterCLIWs",
     "RoasterWebSocketServer",
 ]

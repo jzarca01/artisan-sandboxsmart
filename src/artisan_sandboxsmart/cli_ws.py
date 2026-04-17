@@ -52,8 +52,8 @@ def main():
     parser = argparse.ArgumentParser(description="WebSocket Roaster CLI")
     parser.add_argument(
         "--url", 
-        required=False, 
-        help="WebSocket server URL"
+        default="ws://localhost:8765",
+        help="WebSocket server URL (default: ws://localhost:8765)"
     )
     args = parser.parse_args()
 

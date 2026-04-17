@@ -65,7 +65,6 @@ class RoasterWebSocketServer:
                 try:
                     json_message = json.loads(message)
                     logger.info(f"Nouveau message reçu: {json_message}")
-                    await ws_client.send(json.dumps({"success": True}))
 
                     environment_temp = self.convert_data_for_json(self.controller.environment_temperature)
                     bean_temp = self.convert_data_for_json(self.controller.bean_temperature)
@@ -100,7 +99,7 @@ class RoasterWebSocketServer:
         logger.info(f"Client connecté. Nombre de clients: {len(self.clients)}")
 
     async def unregister(self, websocket):
-        self.clients.remove(websocket)
+        self.clients.discard(websocket)
         logger.info(f"Client déconnecté. Nombre de clients: {len(self.clients)}")
 
     async def handle_client(self, websocket):

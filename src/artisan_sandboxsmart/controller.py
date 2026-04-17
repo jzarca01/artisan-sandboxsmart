@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from queue import Queue
 from typing import Optional, Dict
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -14,7 +13,7 @@ HSTOP = bytearray([0x48, 0x53, 0x54, 0x4F, 0x50])
 class RoasterController:
     def __init__(self):
         self.client: Optional[BleakClient] = None
-        self.command_queue = Queue()
+        self.command_queue = asyncio.Queue()
         self.running = True
         self.environment_temperature: Optional[float] = None
         self.bean_temperature: Optional[float] = None
@@ -88,12 +87,12 @@ class RoasterController:
             logger.info(f"Temperatures updated: ET: {self.environment_temperature} BT: {self.bean_temperature}")
         else:
             try:
-                self.latest_data = data.decode("utf-8");
+                self.latest_data = data.decode("utf-8")
             except Exception as e:
-                self.latest_data = data;
+                self.latest_data = data
             logger.info(f"Notification: {data} {data.hex(':')}")
 
-    async def process_command(self, command: str):
+    async def process_command(self, command):
         """Traite une commande unique"""
         if self.client and self.client.is_connected:
             if self.has_numbers(command):
@@ -106,10 +105,10 @@ class RoasterController:
         """Traite les commandes de la queue et les envoie au périphérique BLE"""
         while self.running:
             try:
-                if not self.command_queue.empty():
-                    command = self.command_queue.get()
-                    await self.process_command(command)
-                await asyncio.sleep(0.1)
+                command = await asyncio.wait_for(self.command_queue.get(), timeout=0.1)
+                await self.process_command(command)
+            except asyncio.TimeoutError:
+                continue
             except Exception as e:
                 logger.error(f"Error in command processor: {e}")
 
@@ -117,23 +116,27 @@ class RoasterController:
         """Ajoute une commande à la queue"""
         if command.upper() == "EXIT":
             self.running = False
-            self.command_queue.put(HSTOP)
+            self.command_queue.put_nowait(HSTOP)
         else:
             if command.upper() == "COOLING":
                 self.bean_temperature = None
             if "HPSTART" in command.upper():
                 self.bean_temperature = None
-            self.command_queue.put(command)
+            self.command_queue.put_nowait(command)
 
 
 
     async def connect(self, device):
         """Établit la connexion avec le périphérique BLE"""
-        self.client = BleakClient(device)
-        await self.client.connect()
-        logger.info("Connected to device")
-        await self.client.start_notify(NOTIFY_UUID, self.notification_handler)
-        return self.client.is_connected
+        try:
+            self.client = BleakClient(device)
+            await self.client.connect()
+            logger.info("Connected to device")
+            await self.client.start_notify(NOTIFY_UUID, self.notification_handler)
+            return self.client.is_connected
+        except Exception as e:
+            logger.error(f"Failed to connect: {e}")
+            return False
 
     async def disconnect(self):
         """Déconnexion propre du périphérique"""

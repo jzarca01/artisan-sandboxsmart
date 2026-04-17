@@ -12,8 +12,7 @@ from cli_ws import WebSocketRoasterCLI
 
 def async_test(coro):
     def wrapper(*args, **kwargs):
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(coro(*args, **kwargs))
+        return asyncio.run(coro(*args, **kwargs))
     return wrapper
 
 class TestRoasterController(unittest.TestCase):
@@ -57,18 +56,18 @@ class TestRoasterController(unittest.TestCase):
     def test_add_command(self):
         # Test normal command
         self.controller.add_command("HEAT 50")
-        self.assertEqual(self.controller.command_queue.get(), "HEAT 50")
+        self.assertEqual(self.controller.command_queue.get_nowait(), "HEAT 50")
         
         # Test EXIT command
         self.controller.add_command("EXIT")
         self.assertFalse(self.controller.running)
-        self.assertEqual(self.controller.command_queue.get(), HSTOP)
+        self.assertEqual(self.controller.command_queue.get_nowait(), HSTOP)
 
         # Test multiple commands
         self.controller.add_command("DRUM 75")
         self.controller.add_command("DRAW 80")
-        self.assertEqual(self.controller.command_queue.get(), "DRUM 75")
-        self.assertEqual(self.controller.command_queue.get(), "DRAW 80")
+        self.assertEqual(self.controller.command_queue.get_nowait(), "DRUM 75")
+        self.assertEqual(self.controller.command_queue.get_nowait(), "DRAW 80")
 
 
     @async_test
