@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Optional, Dict
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -18,35 +19,66 @@ class RoasterController:
         self.notification_callback = None
         self.environment_temperature: Optional[float] = None
         self.bean_temperature: Optional[float] = None
+        self.et_ror: Optional[float] = None
+        self.bt_ror: Optional[float] = None
+        self._last_et: Optional[float] = None
+        self._last_bt: Optional[float] = None
+        self._last_et_time: Optional[float] = None
+        self._last_bt_time: Optional[float] = None
         self.latest_data: Dict = {}
 
     def has_numbers(self, inputString: str) -> bool:
         return any(char.isdigit() for char in inputString)
 
+    def _compute_ror(self, current_temp: float, last_temp: Optional[float], last_time: Optional[float], now: float) -> Optional[float]:
+        """Calcule le Rate of Rise en °/min"""
+        if last_temp is not None and last_time is not None:
+            dt = now - last_time
+            if dt > 0:
+                return round((current_temp - last_temp) / dt * 60, 1)
+        return None
+
     def update_temperatures(self, data: bytearray) -> Optional[float]:
         """Met a jour les températures depuis les données reçues"""
         try:
             hex_temp = data.hex()
+            now = time.monotonic()
             if hex_temp.startswith('5054'):  # Preheating phase 'PT'
                 temp_bytes = hex_temp[8:12]
-                self.environment_temperature = int(temp_bytes, 16)
-                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
-                return int(temp_bytes, 16)
+                temp = int(temp_bytes, 16)
+                self.et_ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
+                self._last_et = temp
+                self._last_et_time = now
+                self.environment_temperature = temp
+                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
+                return temp
             elif hex_temp.startswith('4354'):  # Roasting phase 'CT'
                 temp_bytes = hex_temp[8:12]
-                self.bean_temperature = int(temp_bytes, 16)
-                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
-                return int(temp_bytes, 16)
+                temp = int(temp_bytes, 16)
+                self.bt_ror = self._compute_ror(temp, self._last_bt, self._last_bt_time, now)
+                self._last_bt = temp
+                self._last_bt_time = now
+                self.bean_temperature = temp
+                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
+                return temp
             elif hex_temp.startswith('434c'):  # Cooling phase 'CL'
                 temp_bytes = hex_temp[8:12]
-                self.environment_temperature = int(temp_bytes, 16)
-                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
-                return int(temp_bytes, 16)           
+                temp = int(temp_bytes, 16)
+                self.et_ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
+                self._last_et = temp
+                self._last_et_time = now
+                self.environment_temperature = temp
+                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
+                return temp
             if hex_temp.startswith('4854'):  # 'HT' en hex
                 temp_bytes = hex_temp[4:8]
-                self.environment_temperature = int(temp_bytes, 16)
-                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {int(temp_bytes, 16)}")
-                return int(temp_bytes, 16)
+                temp = int(temp_bytes, 16)
+                self.et_ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
+                self._last_et = temp
+                self._last_et_time = now
+                self.environment_temperature = temp
+                logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
+                return temp
         except Exception as e:
             logger.error(f"Error parsing temperature: {e}")
         return None

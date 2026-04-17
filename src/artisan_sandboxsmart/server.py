@@ -18,6 +18,8 @@ class RoasterWebSocketServer:
             "data": {
                 "ET": None,
                 "BT": None,
+                "ET_ror": None,
+                "BT_ror": None,
                 "status": ""
             },
             "last_command": "Hello",
@@ -65,13 +67,12 @@ class RoasterWebSocketServer:
                 try:
                     json_message = json.loads(message)
                     logger.info(f"Nouveau message reçu: {json_message}")
-
-                    environment_temp = self.convert_data_for_json(self.controller.environment_temperature)
-                    bean_temp = self.convert_data_for_json(self.controller.bean_temperature)
                     
                     self.current_status["data"].update({
-                        "ET": environment_temp,
-                        "BT": bean_temp,
+                        "ET": self.controller.environment_temperature,
+                        "BT": self.controller.bean_temperature,
+                        "ET_ror": self.controller.et_ror,
+                        "BT_ror": self.controller.bt_ror,
                     })
 
                     response = self.current_status

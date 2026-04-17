@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import Mock, patch, AsyncMock, call, PropertyMock
 import asyncio
 import json
+import time
 from queue import Queue
 from websockets.exceptions import ConnectionClosed
 from bleak import BleakClient
@@ -52,6 +53,55 @@ class TestRoasterController(unittest.TestCase):
         data = bytearray.fromhex('0000')
         temp = self.controller.update_temperatures(data)
         self.assertIsNone(temp)
+
+    def test_et_ror_first_reading_is_none(self):
+        data = bytearray.fromhex('50540000007800')  # PT temp=120
+        self.controller.update_temperatures(data)
+        self.assertIsNone(self.controller.et_ror)
+
+    def test_et_ror_computed_on_second_reading(self):
+        # Première lecture : ET=120
+        with patch('time.monotonic', return_value=100.0):
+            self.controller.update_temperatures(bytearray.fromhex('50540000007800'))  # 0x78 = 120
+        # Deuxième lecture 30s plus tard : ET=150 → RoR = (150-120)/30*60 = 60°/min
+        with patch('time.monotonic', return_value=130.0):
+            self.controller.update_temperatures(bytearray.fromhex('50540000009600'))  # 0x96 = 150
+        self.assertEqual(self.controller.et_ror, 60.0)
+
+    def test_bt_ror_first_reading_is_none(self):
+        data = bytearray.fromhex('43540000009600')  # CT temp=150
+        self.controller.update_temperatures(data)
+        self.assertIsNone(self.controller.bt_ror)
+
+    def test_bt_ror_computed_on_second_reading(self):
+        # Première lecture : BT=150
+        with patch('time.monotonic', return_value=200.0):
+            self.controller.update_temperatures(bytearray.fromhex('43540000009600'))  # 0x96 = 150
+        # Deuxième lecture 10s plus tard : BT=160 → RoR = (160-150)/10*60 = 60°/min
+        with patch('time.monotonic', return_value=210.0):
+            self.controller.update_temperatures(bytearray.fromhex('434400000100a000'.replace('4344', '4354')[:14]))
+        # Utilisons un hex plus simple : CT avec temp=160 (0x00A0)
+        with patch('time.monotonic', return_value=210.0):
+            self.controller._last_bt = 150
+            self.controller._last_bt_time = 200.0
+            self.controller.update_temperatures(bytearray.fromhex('435400000000a0'))  # 0xa0 = 160
+        self.assertEqual(self.controller.bt_ror, 60.0)
+
+    def test_et_ror_cooling_phase(self):
+        # CL phase aussi met à jour et_ror
+        with patch('time.monotonic', return_value=300.0):
+            self.controller.update_temperatures(bytearray.fromhex('434c0000006400'))  # CL temp=100
+        with patch('time.monotonic', return_value=360.0):
+            self.controller.update_temperatures(bytearray.fromhex('434c0000005000'))  # CL temp=80
+        # (80-100)/60*60 = -20°/min
+        self.assertEqual(self.controller.et_ror, -20.0)
+
+    def test_ror_zero_when_temp_stable(self):
+        with patch('time.monotonic', return_value=0.0):
+            self.controller.update_temperatures(bytearray.fromhex('50540000007800'))  # PT 120
+        with patch('time.monotonic', return_value=30.0):
+            self.controller.update_temperatures(bytearray.fromhex('50540000007800'))  # PT 120
+        self.assertEqual(self.controller.et_ror, 0.0)
 
     def test_add_command(self):
         # Test normal command
