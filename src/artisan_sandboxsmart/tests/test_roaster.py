@@ -6,9 +6,9 @@ from queue import Queue
 from websockets.exceptions import ConnectionClosed
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
-from controller import RoasterController, HSTOP
-from server import RoasterWebSocketServer
-from cli_ws import WebSocketRoasterCLI
+from artisan_sandboxsmart.controller import RoasterController, HSTOP
+from artisan_sandboxsmart.server import RoasterWebSocketServer
+from artisan_sandboxsmart.cli_ws import WebSocketRoasterCLI
 
 def async_test(coro):
     def wrapper(*args, **kwargs):

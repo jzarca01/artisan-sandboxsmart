@@ -3,7 +3,7 @@ import asyncio
 import logging
 import threading
 from bleak import BleakScanner
-from controller import RoasterController
+from artisan_sandboxsmart.controller import RoasterController
 
 logger = logging.getLogger(__name__)
 

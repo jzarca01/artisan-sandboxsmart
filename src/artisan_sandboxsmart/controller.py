@@ -15,6 +15,7 @@ class RoasterController:
         self.client: Optional[BleakClient] = None
         self.command_queue = asyncio.Queue()
         self.running = True
+        self.notification_callback = None
         self.environment_temperature: Optional[float] = None
         self.bean_temperature: Optional[float] = None
         self.latest_data: Dict = {}
@@ -95,7 +96,13 @@ class RoasterController:
     async def process_command(self, command):
         """Traite une commande unique"""
         if self.client and self.client.is_connected:
-            if self.has_numbers(command):
+            if isinstance(command, (bytes, bytearray)):
+                await self.client.write_gatt_char(
+                    ROASTER_CHARACTERISTIC_UUID,
+                    command,
+                    response=False
+                )
+            elif self.has_numbers(command):
                 parameter, *values = command.split(" ")
                 await self.send_command(parameter, *values)
             else:
@@ -132,7 +139,8 @@ class RoasterController:
             self.client = BleakClient(device)
             await self.client.connect()
             logger.info("Connected to device")
-            await self.client.start_notify(NOTIFY_UUID, self.notification_handler)
+            callback = self.notification_callback or self.notification_handler
+            await self.client.start_notify(NOTIFY_UUID, callback)
             return self.client.is_connected
         except Exception as e:
             logger.error(f"Failed to connect: {e}")

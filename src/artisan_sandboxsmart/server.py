@@ -4,7 +4,7 @@ import logging
 import websockets
 import argparse  # Ajout de l'import
 from bleak import BleakScanner
-from controller import RoasterController
+from artisan_sandboxsmart.controller import RoasterController
 
 logger = logging.getLogger(__name__)
 
