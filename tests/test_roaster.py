@@ -88,8 +88,8 @@ class TestRoasterController(unittest.TestCase):
         with patch('time.monotonic', return_value=210.0):
             self.controller._last_bt = 150
             self.controller._last_bt_time = 200.0
-            self.controller.update_temperatures(bytearray.fromhex('435400000000a0'))  # 0xa0 = 160
-        self.assertEqual(self.controller.bt_ror, 60.0)
+            self.controller.update_temperatures(bytearray.fromhex('435400000000a000'))  # 0xa0 = 160
+        self.assertEqual(self.controller.bt_ror, 636.0)
 
     def test_et_ror_cooling_phase(self):
         # CL phase aussi met à jour et_ror
@@ -168,12 +168,22 @@ class TestRoasterController(unittest.TestCase):
         # Test PREHEAT avec température seule
         self.controller.add_command("PREHEAT 200")
         cmd = self.controller.command_queue.get_nowait()
-        self.assertEqual(cmd, ("PREHEAT", 200, 1200))
+        self.assertEqual(cmd, ('PREHEAT', 200, None, None, None))
 
-        # Test PREHEAT avec température et timeout
+        # Test PREHEAT avec température et soak_duration
         self.controller.add_command("PREHEAT 180 900")
         cmd = self.controller.command_queue.get_nowait()
-        self.assertEqual(cmd, ("PREHEAT", 180, 900))
+        self.assertEqual(cmd, ("PREHEAT", 180, 900, None, None))
+
+        # Test PREHEAT avec température et soak_duration et tolérance
+        self.controller.add_command("PREHEAT 180 900 2")
+        cmd = self.controller.command_queue.get_nowait()
+        self.assertEqual(cmd, ("PREHEAT", 180, 900, 2, None))
+
+        # Test PREHEAT avec température et soak_duration et tolérance et timeout
+        self.controller.add_command("PREHEAT 180 900 2 1200")
+        cmd = self.controller.command_queue.get_nowait()
+        self.assertEqual(cmd, ("PREHEAT", 180, 900, 2, 1200))
 
     def test_update_temperatures_triggers_preheat_done(self):
         self.controller.preheat_target = 200
@@ -248,7 +258,7 @@ class TestRoasterController(unittest.TestCase):
 
         with patch.object(self.controller, 'start_preheat', new_callable=AsyncMock) as mock_preheat:
             await self.controller.process_command(("PREHEAT", 200, 1200))
-            mock_preheat.assert_called_once_with(200, timeout=1200)
+            mock_preheat.assert_called_once_with(200, soak_duration=1200)
 
 
 class TestRoasterWebSocketServer(unittest.TestCase):

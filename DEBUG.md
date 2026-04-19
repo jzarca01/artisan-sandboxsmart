@@ -37,6 +37,8 @@ Once connected, you can use the following commands through the interactive menu:
 - `HSTOP` - Stop the roaster
 - `COOLING` - Activate cooling cycle
 - `HPSTART 1200 200` - Start preheating (time / temperature)
+- `PREHEAT [TARGET_TEMPERATURE] [SOAK_DURATION] [TOLERANCE] [TIMEOUT]` - Preheat with soak check (target temp) with optional timeout: `PREHEAT 200 1800 5 1200`
+- `PREHEAT_STOP` - Stop preheating
 - `HSTART` - Start roasting
 - `EXIT` - Exit the application
 

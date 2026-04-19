@@ -26,6 +26,7 @@ class RoasterController:
         self.latest_data: Dict = {}
         self.preheat_target: Optional[int] = None
         self.preheat_done = asyncio.Event()
+        self._preheat_task: Optional[asyncio.Task] = None
 
     def has_numbers(self, inputString: str) -> bool:
         return any(char.isdigit() for char in inputString)
@@ -146,8 +147,19 @@ class RoasterController:
         """Traite une commande unique"""
         if self.client and self.client.is_connected:
             if isinstance(command, tuple) and command[0] == "PREHEAT":
-                _, target_temp, timeout = command
-                await self.start_preheat(target_temp, timeout=timeout)
+                # Unpack with defaults for missing optional arguments
+                _, target_temp, *rest = command
+                soak_duration, tolerance, timeout = (rest + [None, None, None])[:3]
+                kwargs = {}
+                if soak_duration is not None:
+                    kwargs['soak_duration'] = soak_duration
+                if tolerance is not None:
+                    kwargs['tolerance'] = tolerance
+                if timeout is not None:
+                    kwargs['timeout'] = timeout
+                self._preheat_task = asyncio.create_task(self.start_preheat(target_temp, **kwargs))
+            elif command == "PREHEAT_STOP":
+                self._cancel_preheat()
             elif isinstance(command, (bytes, bytearray)):
                 await self.client.write_gatt_char(
                     ROASTER_CHARACTERISTIC_UUID,
@@ -174,6 +186,7 @@ class RoasterController:
     def add_command(self, command: str):
         """Ajoute une commande à la queue"""
         if command.upper() == "EXIT":
+            self._cancel_preheat()
             self.running = False
             self.command_queue.put_nowait(HSTOP)
         else:
@@ -183,12 +196,22 @@ class RoasterController:
                 parts = command.split()
                 if len(parts) >= 2:
                     target_temp = int(parts[1])
-                    timeout = int(parts[2]) if len(parts) >= 3 else 1200
-                    self.command_queue.put_nowait(("PREHEAT", target_temp, timeout))
+                    soak_duration = int(parts[2]) if len(parts) >= 3 else None
+                    tolerance = int(parts[3]) if len(parts) >= 4 else None
+                    timeout = int(parts[4]) if len(parts) >= 5 else None
+                    self.command_queue.put_nowait(("PREHEAT", target_temp, soak_duration, tolerance, timeout))
                     return
             self.command_queue.put_nowait(command)
 
 
+
+    def _cancel_preheat(self):
+        """Annule le préchauffage en cours"""
+        if self._preheat_task and not self._preheat_task.done():
+            self._preheat_task.cancel()
+            logger.info("Préchauffage annulé")
+        self.preheat_target = None
+        self.preheat_done.clear()
 
     async def start_preheat(self, target_temp: int, timeout: int = 1200, tolerance: int = 5, soak_duration: int = 60):
         """Lance le préchauffage et vérifie le maintien à température cible pendant soak_duration secondes.
@@ -217,18 +240,29 @@ class RoasterController:
         logger.info(f"Température cible {target_temp}° atteinte, début du maintien ({soak_duration}s)")
 
         # Vérifier le maintien à température pendant soak_duration
-        start_time = asyncio.get_event_loop().time()
-        while asyncio.get_event_loop().time() - start_time < soak_duration:
+        soak_start = asyncio.get_event_loop().time()
+        while True:
             await asyncio.sleep(1)
             if self.environment_temperature is None:
                 continue
-            if abs(self.environment_temperature - target_temp) > tolerance:
+            diff = self.environment_temperature - target_temp
+            if diff > tolerance:
+                # Température au-dessus du seuil haut : on attend sans rien faire
+                continue
+            elif diff < -tolerance:
+                # Température en dessous du seuil bas : relancer le préchauffage
                 logger.warning(
-                    f"Maintien: température hors tolérance "
-                    f"({self.environment_temperature}° vs cible {target_temp}° ±{tolerance}°)"
+                    f"Maintien: température trop basse "
+                    f"({self.environment_temperature}° vs cible {target_temp}° -{tolerance}°), "
+                    f"relance du préchauffage"
                 )
-                self.preheat_target = None
-                return False
+                await self.send_command("HPSTART", (str(timeout), str(target_temp)))
+                # Réinitialiser le timer de soak
+                soak_start = asyncio.get_event_loop().time()
+            else:
+                # Dans la tolérance : vérifier si on a tenu assez longtemps
+                if asyncio.get_event_loop().time() - soak_start >= soak_duration:
+                    break
 
         logger.info(f"Préchauffage terminé: maintien à {target_temp}° vérifié pendant {soak_duration}s")
         self.preheat_target = None

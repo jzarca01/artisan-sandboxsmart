@@ -88,7 +88,7 @@ You can find the MAC Address of your roaster in the Sandbox Smart app
 
 Here you can change preheating parameters with the following syntax:
 - `PREHEAT 200` — Start preheating to 200°C with automatic temperature hold verification (1 min soak, ±5° tolerance)
-- `PREHEAT 200 1800` — Same with a custom timeout of 1800 seconds
+- `PREHEAT [TARGET_TEMPERATURE] [SOAK_DURATION] [TOLERANCE] [TIMEOUT]` - Preheat with soak check (target temp) with optional timeout: `PREHEAT 200 1800 5 1200`
 - `HPSTART 1200 200` — Direct BLE command: start preheating (time in seconds / temperature) without soak verification
 
 - Config > Events > Sliders
