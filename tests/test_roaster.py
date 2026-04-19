@@ -1,20 +1,24 @@
+"""Unit tests for RoasterController, RoasterWebSocketServer, and WebSocketRoasterCLI."""
+
 import unittest
-from unittest.mock import Mock, patch, AsyncMock, call, PropertyMock
+from unittest.mock import patch, AsyncMock, call
 import asyncio
 import json
-import time
-from queue import Queue
-from websockets.exceptions import ConnectionClosed
-from bleak import BleakClient
+
 from bleak.backends.device import BLEDevice
-from artisan_sandboxsmart.controller import RoasterController, HSTOP
+
+from artisan_sandboxsmart.controller import RoasterController
 from artisan_sandboxsmart.server import RoasterWebSocketServer
 from artisan_sandboxsmart.cli_ws import WebSocketRoasterCLI
+from artisan_sandboxsmart.config import HSTOP
+
 
 def async_test(coro):
+    """Decorator to run async test methods."""
     def wrapper(*args, **kwargs):
         return asyncio.run(coro(*args, **kwargs))
     return wrapper
+
 
 class TestRoasterController(unittest.TestCase):
     def setUp(self):
@@ -160,6 +164,7 @@ class TestRoasterController(unittest.TestCase):
                 response=False
             )
 
+
 class TestRoasterWebSocketServer(unittest.TestCase):
     def setUp(self):
         self.server = RoasterWebSocketServer()
@@ -223,6 +228,7 @@ class TestRoasterWebSocketServer(unittest.TestCase):
         except asyncio.CancelledError:
             pass
 
+
 class TestWebSocketRoasterCLI(unittest.TestCase):
     def test_print_menu(self):
         with patch('builtins.input', return_value='EXIT'):
@@ -249,6 +255,7 @@ class TestWebSocketRoasterCLI(unittest.TestCase):
                     call(json.dumps({"pushMessage": "HSTOP"}))
                 ]
                 mock_ws.send.assert_has_calls(expected_calls)
+
 
 if __name__ == '__main__':
     unittest.main()

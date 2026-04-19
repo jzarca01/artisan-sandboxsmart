@@ -2,7 +2,10 @@ import argparse
 import asyncio
 import logging
 import threading
+
 from bleak import BleakScanner
+
+from artisan_sandboxsmart.config import configure_logging
 from artisan_sandboxsmart.controller import RoasterController
 
 logger = logging.getLogger(__name__)
@@ -90,7 +93,7 @@ async def main(args: argparse.Namespace):
         await controller.disconnect()
         cli.stop_menu()
 
-if __name__ == "__main__":
+def cli_main():
     parser = argparse.ArgumentParser()
     device_group = parser.add_mutually_exclusive_group(required=True)
     device_group.add_argument(
@@ -116,7 +119,9 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    log_level = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(level=log_level, format="%(message)s")
-    
+    configure_logging(debug=args.debug)
     asyncio.run(main(args))
+
+
+if __name__ == "__main__":
+    cli_main()

@@ -5,11 +5,9 @@ from typing import Optional, Dict
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
 
-logger = logging.getLogger(__name__)
+from artisan_sandboxsmart.config import NOTIFY_UUID, ROASTER_CHARACTERISTIC_UUID, HSTOP
 
-NOTIFY_UUID = "0000ffa1-0000-1000-8000-00805f9b34fb"
-ROASTER_CHARACTERISTIC_UUID = "0000ffa0-0000-1000-8000-00805f9b34fb"
-HSTOP = bytearray([0x48, 0x53, 0x54, 0x4F, 0x50])
+logger = logging.getLogger(__name__)
 
 class RoasterController:
     def __init__(self):
@@ -32,51 +30,66 @@ class RoasterController:
 
     def _compute_ror(self, current_temp: float, last_temp: Optional[float], last_time: Optional[float], now: float) -> Optional[float]:
         """Calcule le Rate of Rise en °/min"""
-        if last_temp is not None and last_time is not None:
-            dt = now - last_time
-            if dt > 0:
-                return round((current_temp - last_temp) / dt * 60, 1)
-        return None
+        if last_temp is None or last_time is None:
+            return None
+        dt = now - last_time
+        if dt <= 0:
+            return None
+        return round((current_temp - last_temp) / dt * 60, 1)
 
     def update_temperatures(self, data: bytearray) -> Optional[float]:
         """Met a jour les températures depuis les données reçues"""
         try:
             hex_temp = data.hex()
             now = time.monotonic()
+            logger.debug(f"hex_temp {hex_temp}")
+            logger.debug(f"self {self.__dict__}")
             if hex_temp.startswith('5054'):  # Preheating phase 'PT'
                 temp_bytes = hex_temp[8:12]
                 temp = int(temp_bytes, 16)
-                self.et_ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
-                self._last_et = temp
-                self._last_et_time = now
-                self.environment_temperature = temp
+                if temp > 0:
+                    ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
+                    if ror is not None:
+                        self.et_ror = ror
+                    self._last_et = temp
+                    self._last_et_time = now
+                    self.environment_temperature = temp
                 logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
                 return temp
             elif hex_temp.startswith('4354'):  # Roasting phase 'CT'
                 temp_bytes = hex_temp[8:12]
                 temp = int(temp_bytes, 16)
-                self.bt_ror = self._compute_ror(temp, self._last_bt, self._last_bt_time, now)
-                self._last_bt = temp
-                self._last_bt_time = now
-                self.bean_temperature = temp
+                if temp > 0:
+                    ror = self._compute_ror(temp, self._last_bt, self._last_bt_time, now)
+                    if ror is not None:
+                        self.bt_ror = ror
+                    self._last_bt = temp
+                    self._last_bt_time = now
+                    self.bean_temperature = temp
                 logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
                 return temp
             elif hex_temp.startswith('434c'):  # Cooling phase 'CL'
                 temp_bytes = hex_temp[8:12]
                 temp = int(temp_bytes, 16)
-                self.et_ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
-                self._last_et = temp
-                self._last_et_time = now
-                self.environment_temperature = temp
+                if temp > 0:
+                    ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
+                    if ror is not None:
+                        self.et_ror = ror
+                    self._last_et = temp
+                    self._last_et_time = now
+                    self.environment_temperature = temp
                 logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
                 return temp
-            if hex_temp.startswith('4854'):  # 'HT' en hex
+            elif hex_temp.startswith('4854'):  # 'HT' en hex
                 temp_bytes = hex_temp[4:8]
                 temp = int(temp_bytes, 16)
-                self.et_ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
-                self._last_et = temp
-                self._last_et_time = now
-                self.environment_temperature = temp
+                if temp > 0:
+                    ror = self._compute_ror(temp, self._last_et, self._last_et_time, now)
+                    if ror is not None:
+                        self.et_ror = ror
+                    self._last_et = temp
+                    self._last_et_time = now
+                    self.environment_temperature = temp
                 logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
                 return temp
         except Exception as e:

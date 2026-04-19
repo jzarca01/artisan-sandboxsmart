@@ -4,6 +4,12 @@ Controller for home roaster Sandbox Smart
 
 __version__ = "0.1.0"
 
+from artisan_sandboxsmart.config import (
+    NOTIFY_UUID,
+    ROASTER_CHARACTERISTIC_UUID,
+    HSTOP,
+    configure_logging,
+)
 from artisan_sandboxsmart.controller import RoasterController
 from artisan_sandboxsmart.cli import RoasterCLI
 from artisan_sandboxsmart.cli_ws import WebSocketRoasterCLI
@@ -14,4 +20,8 @@ __all__ = [
     "RoasterCLI",
     "WebSocketRoasterCLI",
     "RoasterWebSocketServer",
+    "NOTIFY_UUID",
+    "ROASTER_CHARACTERISTIC_UUID",
+    "HSTOP",
+    "configure_logging",
 ]

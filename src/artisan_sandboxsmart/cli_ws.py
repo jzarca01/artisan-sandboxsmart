@@ -1,10 +1,12 @@
 import asyncio
 import json
-import websockets
 import argparse
 import logging
 
-logging.basicConfig(level=logging.INFO)
+import websockets
+
+from artisan_sandboxsmart.config import configure_logging
+
 logger = logging.getLogger(__name__)
 
 class WebSocketRoasterCLI:
@@ -55,7 +57,14 @@ def main():
         default="ws://localhost:8765",
         help="WebSocket server URL (default: ws://localhost:8765)"
     )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Enable debug logging"
+    )
     args = parser.parse_args()
+    configure_logging(debug=args.debug)
 
     cli = WebSocketRoasterCLI(args.url)
     asyncio.run(cli.run())

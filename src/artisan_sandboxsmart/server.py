@@ -1,9 +1,12 @@
 import asyncio
 import json
 import logging
+import argparse
+
 import websockets
-import argparse  # Ajout de l'import
 from bleak import BleakScanner
+
+from artisan_sandboxsmart.config import configure_logging
 from artisan_sandboxsmart.controller import RoasterController
 
 logger = logging.getLogger(__name__)
@@ -51,8 +54,14 @@ class RoasterWebSocketServer:
             try:
                 sender, data = await self._notification_queue.get()
                 converted_data = self.convert_data_for_json(data)
-                # Traiter la notification ici
-                # Mettre à jour current_status si nécessaire
+                # Mettre à jour les températures dans le controller
+                self.controller.update_temperatures(data)
+                self.current_status["data"].update({
+                    "ET": self.controller.environment_temperature,
+                    "BT": self.controller.bean_temperature,
+                    "ET_ror": self.controller.et_ror,
+                    "BT_ror": self.controller.bt_ror,
+                })
                 self.current_status["data"]["status"] = converted_data                    
             except asyncio.CancelledError:
                 break
@@ -158,21 +167,29 @@ class RoasterWebSocketServer:
                     except asyncio.CancelledError:
                         pass
 
-async def main():
+async def _async_main():
     # Configuration des arguments de ligne de commande
     parser = argparse.ArgumentParser()
     parser.add_argument('--mac', '-m', 
                         required=True,
                         help='Adresse MAC du dispositif BLE (ex: cf:03:01:00:00:00)')
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Enable debug logging"
+    )
 
     args = parser.parse_args()
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+    configure_logging(debug=args.debug)
 
     server = RoasterWebSocketServer()
     await server.start_server(device_address=args.mac)
 
+
+def main():
+    asyncio.run(_async_main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

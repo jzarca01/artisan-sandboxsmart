@@ -33,7 +33,7 @@ The main objective of this project is to enable seamless integration between the
 
 ## Requirements
 
-- Python 3.7+
+- Python 3.8+
 - `bleak` library for BLE communication
 - `websockets` library for managing the communications with Artisan Scope
 - Sandbox Smart home coffee roaster (tested with R1 but it should work with R2 as well)
@@ -56,8 +56,9 @@ pip install -e ".[dev]"
 ### Run the websockets server
 
 ```bash
-# Device infos are set directly in the main function
-python3 server.py --mac cf:03:01:00:00:00
+artisan-sandbox-server -m <device-mac-address>
+# Example:
+artisan-sandbox-server -m cf:03:01:00:00:00
 ```
 
 You can find the MAC Address of your roaster in the Sandbox Smart app

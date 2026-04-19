@@ -17,8 +17,9 @@ dev = [
 ]
 
 [project.scripts]
-artisan-sandbox-cli = "artisan_sandboxsmart.cli:main"
+artisan-sandbox-cli = "artisan_sandboxsmart.cli:cli_main"
 artisan-sandbox-server = "artisan_sandboxsmart.server:main"
+artisan-sandbox-cli-ws = "artisan_sandboxsmart.cli_ws:main"
 
 [build-system]
 requires = ["hatchling"]

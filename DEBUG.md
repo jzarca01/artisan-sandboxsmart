@@ -1,15 +1,21 @@
 
+### Install the package (editable mode)
+
+```bash
+pip install -e ".[dev]"
+```
+
 ### Run the CLI (with either the device name or address):
 
 ```bash
 # Using device name
-python3 cli.py --name <device-name>
+artisan-sandbox-cli --name <device-name>
 
 # Using device address
-python3 cli.py --address <device-address>
+artisan-sandbox-cli --address <device-address>
 
 # For macOS users
-python3 cli.py --address <device-address> --macos-use-bdaddr
+artisan-sandbox-cli --address <device-address> --macos-use-bdaddr
 ```
 
 #### Command Line Arguments
@@ -34,8 +40,15 @@ Once connected, you can use the following commands through the interactive menu:
 - `HSTART` - Start roasting
 - `EXIT` - Exit the application
 
+### Run the WebSocket server
+
+```bash
+artisan-sandbox-server -m <device-mac-address>
+artisan-sandbox-server -m <device-mac-address> -d  # with debug logging
+```
+
 ### Run the websockets client (optional, only for debug)
 
 ```bash
-python3 cli_ws.py --url ws://localhost:8765
+artisan-sandbox-cli-ws --url ws://localhost:8765
 ```
