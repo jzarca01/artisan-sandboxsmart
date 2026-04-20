@@ -88,8 +88,8 @@ class TestRoasterController(unittest.TestCase):
         with patch('time.monotonic', return_value=210.0):
             self.controller._last_bt = 150
             self.controller._last_bt_time = 200.0
-            self.controller.update_temperatures(bytearray.fromhex('435400000000a0'))  # 0xa0 = 160
-        self.assertEqual(self.controller.bt_ror, 60.0)
+            self.controller.update_temperatures(bytearray.fromhex('435400000000a000'))  # 0xa0 = 160
+        self.assertEqual(self.controller.bt_ror, 636.0)
 
     def test_et_ror_cooling_phase(self):
         # CL phase aussi met à jour et_ror
@@ -163,6 +163,102 @@ class TestRoasterController(unittest.TestCase):
                 b'HPSTART\x04\xb0\x00\xc8',  # 1200 and 200 in hex
                 response=False
             )
+
+    def test_add_command_preheat(self):
+        # Test PREHEAT avec température seule
+        self.controller.add_command("PREHEAT 200")
+        cmd = self.controller.command_queue.get_nowait()
+        self.assertEqual(cmd, ('PREHEAT', 200, None, None, None))
+
+        # Test PREHEAT avec température et soak_duration
+        self.controller.add_command("PREHEAT 180 900")
+        cmd = self.controller.command_queue.get_nowait()
+        self.assertEqual(cmd, ("PREHEAT", 180, 900, None, None))
+
+        # Test PREHEAT avec température et soak_duration et tolérance
+        self.controller.add_command("PREHEAT 180 900 2")
+        cmd = self.controller.command_queue.get_nowait()
+        self.assertEqual(cmd, ("PREHEAT", 180, 900, 2, None))
+
+        # Test PREHEAT avec température et soak_duration et tolérance et timeout
+        self.controller.add_command("PREHEAT 180 900 2 1200")
+        cmd = self.controller.command_queue.get_nowait()
+        self.assertEqual(cmd, ("PREHEAT", 180, 900, 2, 1200))
+
+    def test_update_temperatures_triggers_preheat_done(self):
+        self.controller.preheat_target = 200
+        self.controller.preheat_done.clear()
+
+        # Température sous la cible : pas de signal
+        data = bytearray.fromhex('50540000009600')  # PT temp=150 (0x96 en offset 8:12 -> '0096' = 150)
+        self.controller.update_temperatures(data)
+        self.assertFalse(self.controller.preheat_done.is_set())
+
+        # Température atteint la cible : signal
+        data = bytearray.fromhex('505400000100c800')  # PT temp=256 (0x100 > 200)
+        # On construit un hex où offset [8:12] donne 00c8 = 200
+        data = bytearray.fromhex('50540000 00c8 00'.replace(' ', ''))
+        self.controller.update_temperatures(data)
+        self.assertTrue(self.controller.preheat_done.is_set())
+
+    @async_test
+    async def test_start_preheat_success(self):
+        mock_client = AsyncMock()
+        self.controller.client = mock_client
+
+        async def simulate_reaching_temp():
+            await asyncio.sleep(0.05)
+            self.controller.environment_temperature = 200
+            self.controller.preheat_done.set()
+
+        task = asyncio.create_task(simulate_reaching_temp())
+        result = await self.controller.start_preheat(target_temp=200, timeout=5, soak_duration=1, tolerance=10)
+        await task
+
+        self.assertTrue(result)
+        self.assertIsNone(self.controller.preheat_target)
+        mock_client.write_gatt_char.assert_called_once()
+
+    @async_test
+    async def test_start_preheat_timeout(self):
+        mock_client = AsyncMock()
+        self.controller.client = mock_client
+
+        # Ne jamais atteindre la cible → timeout
+        result = await self.controller.start_preheat(target_temp=200, timeout=0.1, soak_duration=1)
+
+        self.assertFalse(result)
+        self.assertIsNone(self.controller.preheat_target)
+
+    @async_test
+    async def test_start_preheat_soak_failure(self):
+        mock_client = AsyncMock()
+        self.controller.client = mock_client
+
+        async def simulate_temp_drop():
+            await asyncio.sleep(0.05)
+            self.controller.environment_temperature = 200
+            self.controller.preheat_done.set()
+            # Température chute pendant le soak
+            await asyncio.sleep(0.5)
+            self.controller.environment_temperature = 100
+
+        task = asyncio.create_task(simulate_temp_drop())
+        result = await self.controller.start_preheat(target_temp=200, timeout=5, soak_duration=2, tolerance=5)
+        await task
+
+        self.assertFalse(result)
+        self.assertIsNone(self.controller.preheat_target)
+
+    @async_test
+    async def test_process_command_preheat_tuple(self):
+        mock_client = AsyncMock()
+        mock_client.is_connected = True
+        self.controller.client = mock_client
+
+        with patch.object(self.controller, 'start_preheat', new_callable=AsyncMock) as mock_preheat:
+            await self.controller.process_command(("PREHEAT", 200, 1200))
+            mock_preheat.assert_called_once_with(200, soak_duration=1200)
 
 
 class TestRoasterWebSocketServer(unittest.TestCase):

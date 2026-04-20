@@ -24,6 +24,9 @@ class RoasterController:
         self._last_et_time: Optional[float] = None
         self._last_bt_time: Optional[float] = None
         self.latest_data: Dict = {}
+        self.preheat_target: Optional[int] = None
+        self.preheat_done = asyncio.Event()
+        self._preheat_task: Optional[asyncio.Task] = None
 
     def has_numbers(self, inputString: str) -> bool:
         return any(char.isdigit() for char in inputString)
@@ -55,6 +58,8 @@ class RoasterController:
                     self._last_et_time = now
                     self.environment_temperature = temp
                 logger.debug(f"Temp_bytes: {temp_bytes}, int(temp_bytes, 16): {temp}")
+                if self.preheat_target and self.environment_temperature >= self.preheat_target:
+                    self.preheat_done.set()
                 return temp
             elif hex_temp.startswith('4354'):  # Roasting phase 'CT'
                 temp_bytes = hex_temp[8:12]
@@ -141,7 +146,21 @@ class RoasterController:
     async def process_command(self, command):
         """Traite une commande unique"""
         if self.client and self.client.is_connected:
-            if isinstance(command, (bytes, bytearray)):
+            if isinstance(command, tuple) and command[0] == "PREHEAT":
+                # Unpack with defaults for missing optional arguments
+                _, target_temp, *rest = command
+                soak_duration, tolerance, timeout = (rest + [None, None, None])[:3]
+                kwargs = {}
+                if soak_duration is not None:
+                    kwargs['soak_duration'] = soak_duration
+                if tolerance is not None:
+                    kwargs['tolerance'] = tolerance
+                if timeout is not None:
+                    kwargs['timeout'] = timeout
+                self._preheat_task = asyncio.create_task(self.start_preheat(target_temp, **kwargs))
+            elif command == "PREHEAT_STOP":
+                self._cancel_preheat()
+            elif isinstance(command, (bytes, bytearray)):
                 await self.client.write_gatt_char(
                     ROASTER_CHARACTERISTIC_UUID,
                     command,
@@ -167,16 +186,87 @@ class RoasterController:
     def add_command(self, command: str):
         """Ajoute une commande à la queue"""
         if command.upper() == "EXIT":
+            self._cancel_preheat()
             self.running = False
             self.command_queue.put_nowait(HSTOP)
         else:
             if command.upper() == "COOLING":
                 self.bean_temperature = None
-            if "HPSTART" in command.upper():
-                self.bean_temperature = None
+            if command.upper().startswith("PREHEAT"):
+                parts = command.split()
+                if len(parts) >= 2:
+                    target_temp = int(parts[1])
+                    soak_duration = int(parts[2]) if len(parts) >= 3 else None
+                    tolerance = int(parts[3]) if len(parts) >= 4 else None
+                    timeout = int(parts[4]) if len(parts) >= 5 else None
+                    self.command_queue.put_nowait(("PREHEAT", target_temp, soak_duration, tolerance, timeout))
+                    return
             self.command_queue.put_nowait(command)
 
 
+
+    def _cancel_preheat(self):
+        """Annule le préchauffage en cours"""
+        if self._preheat_task and not self._preheat_task.done():
+            self._preheat_task.cancel()
+            logger.info("Préchauffage annulé")
+        self.preheat_target = None
+        self.preheat_done.clear()
+
+    async def start_preheat(self, target_temp: int, timeout: int = 1200, tolerance: int = 5, soak_duration: int = 60):
+        """Lance le préchauffage et vérifie le maintien à température cible pendant soak_duration secondes.
+        
+        Args:
+            target_temp: Température cible en degrés
+            timeout: Temps max de préchauffage en secondes
+            tolerance: Tolérance en degrés pour le maintien
+            soak_duration: Durée de vérification du maintien en secondes
+        """
+        self.preheat_target = target_temp
+        self.preheat_done.clear()
+        self.bean_temperature = None
+
+        logger.info(f"Préchauffage: cible={target_temp}°, timeout={timeout}s")
+        await self.send_command("HPSTART", (str(timeout), str(target_temp)))
+
+        # Attendre que la température cible soit atteinte
+        try:
+            await asyncio.wait_for(self.preheat_done.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.error(f"Préchauffage: température cible {target_temp}° non atteinte dans le délai de {timeout}s")
+            self.preheat_target = None
+            return False
+
+        logger.info(f"Température cible {target_temp}° atteinte, début du maintien ({soak_duration}s)")
+
+        # Vérifier le maintien à température pendant soak_duration
+        soak_start = asyncio.get_event_loop().time()
+        while True:
+            await asyncio.sleep(1)
+            if self.environment_temperature is None:
+                continue
+            diff = self.environment_temperature - target_temp
+            if diff > tolerance:
+                # Température au-dessus du seuil haut : on attend sans rien faire
+                continue
+            elif diff < -tolerance:
+                # Température en dessous du seuil bas : relancer le préchauffage
+                logger.warning(
+                    f"Maintien: température trop basse "
+                    f"({self.environment_temperature}° vs cible {target_temp}° -{tolerance}°), "
+                    f"relance du préchauffage"
+                )
+                await self.send_command("HPSTART", (str(timeout), str(target_temp)))
+                # Réinitialiser le timer de soak
+                soak_start = asyncio.get_event_loop().time()
+            else:
+                # Dans la tolérance : vérifier si on a tenu assez longtemps
+                if asyncio.get_event_loop().time() - soak_start >= soak_duration:
+                    break
+
+        logger.info(f"Préchauffage terminé: maintien à {target_temp}° vérifié pendant {soak_duration}s")
+        self.preheat_target = None
+        return True
 
     async def connect(self, device):
         """Établit la connexion avec le périphérique BLE"""

@@ -86,7 +86,10 @@ You can find the MAC Address of your roaster in the Sandbox Smart app
 
 ![Config > Events > Config ](./images/config_events.png)
 
-Here you can change preheating parameters with the following syntax `HPSTART 1200 200` - Start preheating (time (in seconds no need to change)  / temperature) 
+Here you can change preheating parameters with the following syntax:
+- `PREHEAT 200` — Start preheating to 200°C with automatic temperature hold verification (1 min soak, ±5° tolerance)
+- `PREHEAT [TARGET_TEMPERATURE] [SOAK_DURATION] [TOLERANCE] [TIMEOUT]` - Preheat with soak check (target temp) with optional timeout: `PREHEAT 200 1800 5 1200`
+- `HPSTART 1200 200` — Direct BLE command: start preheating (time in seconds / temperature) without soak verification
 
 - Config > Events > Sliders
 
@@ -124,15 +127,15 @@ The application uses the following BLE characteristics:
 
 The controller implements an asynchronous architecture using:
 - Asyncio for BLE communication
-- Threading for user interface
-- Queue for command processing
+- Asyncio Queue for command processing
+- Threading for user interface (CLI mode)
 
 ## Roadmap
 
 ### Implemented Features
 - [x] Basic BLE communication and device discovery
 - [x] Command-line interface structure
-- [x] Pre-heating
+- [x] Pre-heating with automatic soak verification
 - [x] Start/Stop roasting commands
 - [x] Light control
 - [x] Cooling cycle command

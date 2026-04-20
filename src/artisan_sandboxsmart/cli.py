@@ -25,6 +25,8 @@ class RoasterCLI:
         Stop: HSTOP
         Cooling: COOLING
         Start preheating: HPSTART 1200 200 (time / temperature)
+        Preheat with soak check: PREHEAT 200 (target temp) [soak_duration] [tolerance] [timeout]
+        Stop preheating: PREHEAT_STOP
         Start roasting: HSTART
         Exit: EXIT
         """
